@@ -2,9 +2,11 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { VocabularyItem, VocabularyContextType, SortOption } from '@/types/vocabulary';
 import { debounce } from '@/utils/debounce';
+import { compressImage } from '@/utils/MediaCompression';
 
 const STORAGE_KEY = '@vocabulary_data';
 const BACKUP_KEY = '@vocabulary_backup';
+const MEDIA_STORAGE_KEY = '@media_files';
 
 const VocabularyContext = createContext<VocabularyContextType | undefined>(undefined);
 
@@ -79,6 +81,14 @@ export function VocabularyProvider({ children }: { children: React.ReactNode }) 
   };
 
   const addWord = async (word: string, meaning: string): Promise<boolean> => {
+    return addWordWithMedia(word, meaning, []);
+  };
+
+  const addWordWithMedia = async (
+    word: string, 
+    meaning: string, 
+    mediaFiles: string[] = []
+  ): Promise<boolean> => {
     try {
       setError(null);
       
@@ -92,11 +102,27 @@ export function VocabularyProvider({ children }: { children: React.ReactNode }) 
         return false;
       }
 
+      // Process media files
+      const processedMedia = await Promise.all(
+        mediaFiles.map(async (uri) => {
+          try {
+            if (uri.includes('image')) {
+              return await compressImage(uri, { quality: 0.7, maxWidth: 800 });
+            }
+            return uri;
+          } catch (error) {
+            console.error('Media processing failed:', error);
+            return uri;
+          }
+        })
+      );
+
       const newItem: VocabularyItem = {
         id: Date.now().toString(),
         word: word.trim(),
         meaning: meaning.trim(),
         createdAt: Date.now(),
+        mediaFiles: processedMedia,
       };
 
       setVocabulary(prev => [...prev, newItem]);
@@ -109,6 +135,15 @@ export function VocabularyProvider({ children }: { children: React.ReactNode }) 
   };
 
   const updateWord = async (id: string, word: string, meaning: string): Promise<boolean> => {
+    return updateWordWithMedia(id, word, meaning);
+  };
+
+  const updateWordWithMedia = async (
+    id: string, 
+    word: string, 
+    meaning: string,
+    mediaFiles?: string[]
+  ): Promise<boolean> => {
     try {
       setError(null);
       
@@ -122,10 +157,33 @@ export function VocabularyProvider({ children }: { children: React.ReactNode }) 
         return false;
       }
 
+      // Process new media files if provided
+      let processedMedia: string[] | undefined;
+      if (mediaFiles) {
+        processedMedia = await Promise.all(
+          mediaFiles.map(async (uri) => {
+            try {
+              if (uri.includes('image')) {
+                return await compressImage(uri, { quality: 0.7, maxWidth: 800 });
+              }
+              return uri;
+            } catch (error) {
+              console.error('Media processing failed:', error);
+              return uri;
+            }
+          })
+        );
+      }
+
       setVocabulary(prev =>
         prev.map(item =>
           item.id === id
-            ? { ...item, word: word.trim(), meaning: meaning.trim() }
+            ? { 
+                ...item, 
+                word: word.trim(), 
+                meaning: meaning.trim(),
+                ...(processedMedia && { mediaFiles: processedMedia })
+              }
             : item
         )
       );
@@ -186,7 +244,9 @@ export function VocabularyProvider({ children }: { children: React.ReactNode }) 
   const value: VocabularyContextType = {
     vocabulary: sortedVocabulary,
     addWord,
+    addWordWithMedia,
     updateWord,
+    updateWordWithMedia,
     deleteWord,
     clearAll,
     markAsReviewed,
