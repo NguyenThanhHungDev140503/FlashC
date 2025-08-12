@@ -1,6 +1,6 @@
 import React, { Component, ReactNode } from 'react';
 import { View, Text } from 'react-native';
-import { AlertTriangle } from 'lucide-react-native';
+import { TriangleAlert as AlertTriangle } from 'lucide-react-native';
 
 interface Props {
   children: ReactNode;
